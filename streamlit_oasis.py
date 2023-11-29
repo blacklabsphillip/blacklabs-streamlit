@@ -3,14 +3,13 @@ from elevenlabs import generate, play, set_api_key
 import base64
 from streamlit_mic_recorder import mic_recorder, speech_to_text
 import numpy as np
-from bokeh.models import ColumnDataSource, Button
+from bokeh.models import ColumnDataSource
 from bokeh.plotting import figure, curdoc
 from bokeh.driving import count
 import asyncio
 import threading
 import requests
 
-# Function to update the waveform in real-time
 # Function to update the waveform in real-time
 @count()
 def update_waveform(n, waveform_source, user_input):
@@ -36,13 +35,7 @@ def autoplay_audio(file_path: str):
             <source src="data:audio/mp3;base64,{b64}" type="audio/mp3">
             </audio>
             """
-        st.markdown(
-            md,
-            unsafe_allow_html=True,
-        )
-# Function to plot audio waveform
-
-
+        st.markdown(md, unsafe_allow_html=True)
 
 # Voiceflow API key and user ID
 voiceflow_api_key = "VF.DM.65409de36a2a5400076127f1.1AQK0cCvvWnOQziJ"
@@ -53,39 +46,40 @@ st.session_state._last_audio_id = 0
 set_api_key("1d54c6fcb21466e4e325552537e3d799")
 
 # Streamlit app
-st.title("Talk to OASIS")
+st.markdown(
+    """
+    <style>
+        .centered {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            font-size: 24px;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-st.image(image='oasis-mecha.png',caption='OASIS')
-# User input
+st.markdown('<b><p class="centered">TALK TO OASIS</p></b>', unsafe_allow_html=True)
 
-# Voice options
-voice = "kFoByongNmtXS5dmvcJw"  # Set the default voice
+# Create layout columns
+col1, col2, col3 = st.columns([3, 3, 6])
 
-state= st.session_state
+# Column 1: Image
+col1.image(image='oasis-mecha.png')
 
+# Column 2: Play/Stop button (centered)
+with col2:
+    text = speech_to_text(start_prompt="⏺️", stop_prompt="⏹️", language='en', use_container_width=True, just_once=True, key='STT')
+    st.write("Click to start talking and click again once done.")
 
-if 'text_received' not in state:
-    state.text_received=[]
-
-c1,c2=st.columns(2)
-with c1:
-    st.write("Click to start talking and click again once done:")
-with c2:
-    text=speech_to_text(start_prompt="⏺️",stop_prompt="⏹️", language='en',use_container_width=True,just_once=True,key='STT')
-
-if text:
-    state.text_received.append(text)
-
-# Ensure that there's at least one text received
-if state.text_received:
-    # Get the latest user input
-    user_input = state.text_received[-1]
-    st.write(user_input)
-    chart_placeholder = st.empty()
-
-    try:
+# Column 3: Chat area
+with col3:
+    st.text("Oasis Response:")
+    if text:
         # Send user input to Voiceflow
-        body = {"action": {"type": "text", "payload": user_input}}
+        body = {"action": {"type": "text", "payload": text}}
         response = requests.post(
             f"https://general-runtime.voiceflow.com/state/user/{user_id}/interact",
             json=body,
@@ -112,12 +106,11 @@ if state.text_received:
             chatbot_response += text + " "
 
         # Display chatbot response
-        st.text("Oasis Response:")
         st.write(chatbot_response)
         print(chatbot_response)
 
         # Generate and play the audio using Eleven Labs API
-        audio = generate(text=chatbot_response, voice=voice, model='eleven_multilingual_v1', api_key="1d54c6fcb21466e4e325552537e3d799")
+        audio = generate(text=chatbot_response, voice='kFoByongNmtXS5dmvcJw', model='eleven_multilingual_v1', api_key="1d54c6fcb21466e4e325552537e3d799")
         play(audio, notebook=True)
 
         # Convert the audio to base64 for streaming
@@ -125,21 +118,9 @@ if state.text_received:
         audio_tag = f'<audio autoplay="true" src="data:audio/wav;base64,{audio_base64}">'
         st.markdown(audio_tag, unsafe_allow_html=True)
 
-        # Create a Bokeh plot for the waveform
-        waveform_source = ColumnDataSource(data=dict(time=[], amplitude=[]))
-        waveform_plot = figure(width=800, height=300, title="Audio Waveform", tools="pan,box_zoom,reset")
-        waveform_plot.line('time', 'amplitude', source=waveform_source)
 
-        # Call the update_waveform function in the Bokeh plot
-        curdoc().add_periodic_callback(lambda: update_waveform(None, waveform_source, user_input), 100)
-
-        chart_placeholder.bokeh_chart(waveform_plot)
 
         # Start the asyncio event loop in a separate thread
         loop_thread = threading.Thread(target=start_event_loop)
         loop_thread.start()
-
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error: {e}")
-
 
